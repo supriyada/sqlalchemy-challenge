@@ -37,6 +37,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def welcome():
+    
     global most_recent_date_f
     global start_date_f
     session = Session(engine)
@@ -50,11 +51,11 @@ def welcome():
     """List all available api routes."""
     return (
         f"Available Routes:<br/>"
-        f"/api/v1.0/precipitation<br/>"
-        f"/api/v1.0/stations<br/>"
-        f"/api/v1.0/tobs<br/>"
-        f"/api/v1.0/<start><br/>"
-        f"/api/v1.0/<start>/<end>"
+        f"The precipitation data for the last year: /api/v1.0/precipitation<br/>"
+        f"The list of stations from dataset: /api/v1.0/stations<br/>"
+        f"The temperature observations of the most active station: /api/v1.0/tobs<br/>"
+        f"To find temperature statistics from a given start date [YYYY-MM-DD]: /api/v1.0/<start><br/>"
+        f"To find temperature statistics from a given date range [YYYY-MM-DD]: /api/v1.0/<start>/<end>"
     )
 
 @app.route("/api/v1.0/precipitation")
@@ -99,7 +100,7 @@ def station_names():
     session = Session(engine)
 
     """Return a list of all station names"""
-    # Query all passengers
+    # Query all stations
     results = session.query(Station.station).all()
 
     session.close()
@@ -126,15 +127,51 @@ def temp_start_date(start):
         mi_temp = result.mini_temp
         ma_temp = result.max_temp
         avg_temp = result.average_temp
-    return (f"The lowest temperature recorded: {mi_temp}</br>"
-            f"The highest temperature recorded: {ma_temp}</br>"
-            f"The average temperature recorded: {avg_temp}</br>")
+
+    st_date_dict = [{"Minimum temperature": mi_temp,\
+                    "Maximum temperature" : ma_temp,\
+                    "Average temperature" : avg_temp}]
+
+    return jsonify(st_date_dict)
+
+
+@app.route("/api/v1.0/<start>/<end>")
+def temp_start_end_date(start,end):
+    range_st_date = to_date(start)
+    range_end_date = to_date(end)
+
+    if  range_st_date > range_end_date:
+        return f"You have entered date range [Start date:{range_st_date},End date: {range_end_date}].</br>\
+        Please enter the start date less than the end date!!!"
+
+    else:
+        session = Session(engine)
+
+        start_end_date_result = session.query(Measurement, \
+                                func.min(Measurement.tobs).label("mini_temp1"),\
+                                    func.max(Measurement.tobs).label("max_temp1"),\
+                                    func.avg(Measurement.tobs).label("average_temp1")).\
+                                    filter(Measurement.date >= range_st_date).\
+                                    filter(Measurement.date <= range_end_date).all()
+        
+        session.close()
+
+        for results in start_end_date_result:
+            mi_temp1 = results.mini_temp1
+            ma_temp1 = results.max_temp1
+            avg_temp1 = results.average_temp1
+
+        st_end_date_dict = [{"Minimum temperature": mi_temp1,\
+                    "Maximum temperature" : ma_temp1,\
+                    "Average temperature" : avg_temp1}]
+
+        return jsonify(st_end_date_dict)
 
 def to_date(date_string): 
     try:
         return datetime.datetime.strptime(date_string, "%Y-%m-%d").date()
     except ValueError:
-        raise ValueError('{} is not valid date in the format YYYY-MM-DD'.format(date_string))
+        raise ValueError('{} is not valid date. Please enter in the format YYYY-MM-DD'.format(date_string))
 
 
 if __name__ == '__main__':
