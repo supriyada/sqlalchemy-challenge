@@ -1,13 +1,12 @@
 import numpy as np
 
-from sqlalchemy import *
+from sqlalchemy import desc
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, func
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
 from dateutil.parser import parse
-import pandas as pd
 import datetime
 
 from flask import Flask, jsonify
@@ -34,34 +33,41 @@ app = Flask(__name__)
 
 # Flask Routes
 #-------------
-
+#Home page
 @app.route("/")
 def welcome():
     
+    """List all available api routes."""
+    return (
+        f"<h2>Welcome to the Climate App</h2><br/>"
+        f"<strong>Available Routes:</strong><br/>"
+        f"*************************<br/>"
+        f"The precipitation data for the last year: <strong>/api/v1.0/precipitation</strong><br/>"
+        f"The list of stations from dataset: <strong>/api/v1.0/stations</strong><br/>"
+        f"The temperature observations of the most active station: <strong>/api/v1.0/tobs</strong><br/>"
+        f"To find temperature statistics from a given start date [YYYY-MM-DD]:<strong> /api/v1.0/<start></strong><br/>"
+        f"To find temperature statistics from a given date range [YYYY-MM-DD]:<strong> /api/v1.0/<start>/<end></strong>"
+    )
+
+def calc_date():
     global most_recent_date_f
     global start_date_f
     session = Session(engine)
-
+    #Finds the most recent date and find the preceding 12th month
     recent_date_f = session.query(Measurement).order_by(Measurement.date.desc()).first()
     most_recent_date_f = parse(recent_date_f.date)
     start_date_f = most_recent_date_f  + relativedelta(months=-12) - timedelta(days=1)
 
     session.close()
 
-    """List all available api routes."""
-    return (
-        f"Available Routes:<br/>"
-        f"The precipitation data for the last year: /api/v1.0/precipitation<br/>"
-        f"The list of stations from dataset: /api/v1.0/stations<br/>"
-        f"The temperature observations of the most active station: /api/v1.0/tobs<br/>"
-        f"To find temperature statistics from a given start date [YYYY-MM-DD]: /api/v1.0/<start><br/>"
-        f"To find temperature statistics from a given date range [YYYY-MM-DD]: /api/v1.0/<start>/<end>"
-    )
+    return (most_recent_date_f,start_date_f)
 
+# Precipitation data for the last year from dataset
+#--------------------------------------------------
 @app.route("/api/v1.0/precipitation")
 def precipitation():
 
-    
+    calc_date()    
     # Create our session (link) from Python to the DB
     session = Session(engine)
 
@@ -73,16 +79,21 @@ def precipitation():
 
     return jsonify(prcp_dict)
 
+# The temperature observations of the most active station
+#--------------------------------------------------------
 @app.route("/api/v1.0/tobs")
 def tobs():
-    session = Session(engine)
+    
+    calc_date() 
 
+    session = Session(engine)
+    #Finds the most active station
     active_station_f = session.query(Measurement.station, func.count().label("measurement_count"))\
                                                         .group_by(Measurement.station)\
                                                         .order_by(desc(func.count())).first()
 
     most_active_station_f = active_station_f.station
-        
+    #Queries the database to find the temperature observations for most active station for last 12 months    
     active_station_tob_f = session.query(Measurement.date,Measurement.tobs).\
                 filter(Measurement.date.between(start_date_f, most_recent_date_f)).\
                 filter(Measurement.station == most_active_station_f).all()
@@ -93,7 +104,8 @@ def tobs():
     
     return jsonify(tobs_dict)
 
-
+# List of all the stations
+#-------------------------
 @app.route("/api/v1.0/stations")
 def station_names():
     # Create our session (link) from Python to the DB
@@ -110,6 +122,8 @@ def station_names():
 
     return jsonify(all_names)
 
+# Temperature statistics[min, max & avg] with only start date provided
+#----------------------------------------------------------------------
 @app.route("/api/v1.0/<start>")
 def temp_start_date(start):
     range_start_date = to_date(start)
@@ -135,6 +149,8 @@ def temp_start_date(start):
     return jsonify(st_date_dict)
 
 
+# Temperature statistics[min, max & avg] for the date range provided
+#----------------------------------------------------------------------
 @app.route("/api/v1.0/<start>/<end>")
 def temp_start_end_date(start,end):
     range_st_date = to_date(start)
@@ -167,12 +183,13 @@ def temp_start_end_date(start,end):
 
         return jsonify(st_end_date_dict)
 
+# Verifying date entered and returning in required date format
+#----------------------------------------------------------------------
 def to_date(date_string): 
     try:
         return datetime.datetime.strptime(date_string, "%Y-%m-%d").date()
     except ValueError:
         raise ValueError('{} is not valid date. Please enter in the format YYYY-MM-DD'.format(date_string))
-
 
 if __name__ == '__main__':
     app.run(debug=True)
