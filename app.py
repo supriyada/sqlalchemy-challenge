@@ -68,17 +68,9 @@ def precipitation():
 
     session.close()
 
-    """u = dict(query_result_f)"""
-    """for u in query_result_f:
-        u._asdict()"""
+    prcp_dict = [r._asdict() for r in query_result_f]
 
-    """prcp_dict = {'Date':[],'Precipitation':[]}
-
-    for row in query_result_f:
-        prcp_dict['Date'].append(row.date)
-        prcp_dict['Precipitation'].append(row.prcp)"""
-
-    return jsonify(u)
+    return jsonify(prcp_dict)
 
 @app.route("/api/v1.0/tobs")
 def tobs():
@@ -96,12 +88,7 @@ def tobs():
 
     session.close()
 
-    tobs_dict = {'Date':[],'Temperature':[]}
-
-    for row in active_station_tob_f:
-        tobs_dict['Date'].append(row.date)
-        tobs_dict['Temperature'].append(row.tobs)
-
+    tobs_dict = [t._asdict() for t in active_station_tob_f]
     
     return jsonify(tobs_dict)
 
@@ -127,14 +114,21 @@ def temp_start_date(start):
     range_start_date = to_date(start)
     session = Session(engine)
 
-    query_result = session.query(Measurement.date,Measurement.tobs).\
-                filter(Measurement.date >= range_start_date).all()
+    only_start_date_result = session.query(Measurement, \
+                               func.min(Measurement.tobs).label("mini_temp"),\
+                                func.max(Measurement.tobs).label("max_temp"),\
+                                func.avg(Measurement.tobs).label("average_temp")).\
+                                filter(Measurement.date >= range_start_date).all()
     
     session.close()
 
-
-
-    return f"You have entered {start}"
+    for result in only_start_date_result:
+        mi_temp = result.mini_temp
+        ma_temp = result.max_temp
+        avg_temp = result.average_temp
+    return (f"The lowest temperature recorded: {mi_temp}</br>"
+            f"The highest temperature recorded: {ma_temp}</br>"
+            f"The average temperature recorded: {avg_temp}</br>")
 
 def to_date(date_string): 
     try:
